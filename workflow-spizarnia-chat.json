@@ -1,10 +1,10 @@
 {
-  "name": "Asystent Arkusza Google – Chat Q&A (Strict Grounding)",
+  "name": "Asystent Arkusza Google – Chat Q&A + Aktualizacja Magazynu",
   "nodes": [
     {
       "parameters": {
         "public": true,
-        "initialMessages": "Cześć! 👋 Jestem Twoim inteligentnym asystentem arkusza Google.\n\nMożesz mnie zapytać o dowolne dane z podpiętego arkusza (np. stany produktów, braki, podsumowania, lub co możemy przygotować z tego co mamy). Odpowiadam wyłącznie na podstawie informacji zawartych w Twoim arkuszu!",
+        "initialMessages": "Cześć! 👋 Jestem Twoim asystentem arkusza Google.\n\nMożesz mnie zapytać o stany magazynowe i przepisy, ale także zarządzać zawartością arkusza:\n• „Dodaj do spiżarni: Czosnek, 3 sztuki, minimum 1”\n• „Kupiłem 2 mleka, zaktualizuj stan”\n• „Zużyłem passatę, zdejmij ze stanu”\n• „Chcę zrobić naleśniki, czego mi brakuje?”",
         "options": {}
       },
       "id": "trigger-chat",
@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 1. Odczyt wierszy z Google Sheets\nconst rows = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length > 0);\n\n// 2. Odczyt pytania użytkownika z Chat Trigger\nconst chatNode = $('Chat Trigger').first().json;\nconst chatInput = String(chatNode.chatInput || chatNode.message || chatNode.text || '').trim();\n\n// 3. Formatowanie danych arkusza w czytelnej strukturze JSON\nconst sheetData = JSON.stringify(rows, null, 2);\n\n// 4. Instrukcja systemowa dla asystenta spiżarni i kuchni\nconst systemPrompt = `Jesteś inteligentnym asystentem domowej spiżarni i magazynu, bazującym na dostarczonym Arkuszu Google.\n\nTWOJE ZADANIA I SPOSÓB ROZUMOWANIA:\n1. STANY MAGAZYNOWE: O tym, co użytkownik POSIADA i w jakich ilościach, decyduje WYŁĄCZNIE poniższa tabela z Arkusza Google. Nie wymyślaj produktów ani ilości, których tam nie ma.\n2. PRZEPISY I GOTOWANIE (np. \"chcę zrobić naleśniki, co muszę dokupić?\", \"co mogę ugotować?\"):\n   - Wykorzystaj swoją wiedzę kulinarną, aby ustalić, jakich składników wymaga dane danie.\n   - DOKŁADNIE porównaj te składniki z zawartością tabeli ze spiżarni.\n   - Wymień co użytkownik już ma (wraz ze stanem), a co MUSI dokupić (gdy produktu nie ma w arkuszu LUB ma ilość równą 0 / zbyt małą).\n3. LISTA ZAKUPÓW / BRAKI: Jeśli użytkownik pyta ogólnie o braki lub zakupy, wymień wszystkie produkty z tabeli, których ilość jest równa 0 lub mniejsza/równa progowi \"Minimum\".\n4. GRANICE TEMATYCZNE: Twoja rola ogranicza się do spiżarni, zakupów, gotowania i analizy danych z arkusza. Jeśli użytkownik zapyta o zupełnie niezwiązane tematy (np. polityka, historia, pogoda), odpowiedz grzecznie: \"W arkuszu nie ma informacji na ten temat - pomagam wyłącznie w sprawdzaniu zapasów i planowaniu zakupów/gotowania.\"\n5. FORMAT: Odpowiadaj po polsku, w sposób przejrzysty i czytelny, używając punktorów i pogrubień Markdown.`;\n\nconst userPrompt = `DANE Z ARKUSZA GOOGLE:\n${sheetData}\n\nPYTANIE UŻYTKOWNIKA:\n${chatInput || '(brak pytania - przedstaw się i napisz w czym możesz pomóc na podstawie tego arkusza)'}`;\n\nconst fullPrompt = `${systemPrompt}\n\n========================================\n${userPrompt}`;\n\nreturn [{\n  json: {\n    chatInput,\n    rowCount: rows.length,\n    payload: {\n      contents: [\n        {\n          parts: [\n            { text: fullPrompt }\n          ]\n        }\n      ],\n      generationConfig: {\n        temperature: 0.2,\n        maxOutputTokens: 8192\n      }\n    }\n  }\n}];"
+        "jsCode": "// 1. Odczyt wierszy z Google Sheets\nconst rows = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length > 0);\n\n// 2. Odczyt pytania użytkownika z Chat Trigger\nconst chatNode = $('Chat Trigger').first().json;\nconst chatInput = String(chatNode.chatInput || chatNode.message || chatNode.text || '').trim();\n\n// 3. Formatowanie danych arkusza w czytelnej strukturze JSON oraz lista kolumn\nconst sheetData = JSON.stringify(rows, null, 2);\nconst columnsList = rows.length > 0 ? Object.keys(rows[0]).join(', ') : 'Produkt, Ilosc, Jednostka, Minimum, Kategoria';\n\n// 4. Instrukcja systemowa dla asystenta z obsługą modyfikacji magazynu\nconst systemPrompt = `Jesteś inteligentnym asystentem domowej spiżarni i magazynu, zintegrowanym z Arkuszem Google.\\nTwoim zadaniem jest odpowiadanie na pytania oraz ZARZĄDZANIE STANEM W ARKUSZU (dodawanie produktów, zmiana ilości, zdejmowanie ze stanu).\\n\\nKOLUMNY W TWOIM ARKUSZU TO: ${columnsList}\\n\\nTWOJE ZADANIA:\\n1. MODYFIKACJA STANU (np. \"kupiłem 2 mleka\", \"zmień ilość jajek na 10\", \"zdejmij ze stanu mleko\", \"zużyłem passatę\", \"dodaj czosnek 3 sztuki\"):\\n   - Ustaw pole \"action\": \"update\".\\n   - W polu \"reply\" napisz zwięzłe, przyjazne potwierdzenie (np. \"✅ Zaktualizowałem stan: Mleko ma teraz 4 l\" lub \"✅ Zdjąłem Mleko ze stanu (ilość: 0 l)\" lub \"✅ Dodałem Czosnek (3 szt) do spiżarni\").\\n   - W obiekcie \"row\" podaj dane wiersza do zapisu/aktualizacji. Użyj DOKŁADNIE takich samych nazw kluczy jak kolumny arkusza:\\n     * Nazwa produktu w polu \"Produkt\" (dla istniejącego produktu użyj DOKŁADNIE takiej nazwy jak w tabeli, np. \"Mleko\", dla nowego podaj nową nazwę).\\n     * \"Ilosc\": nowa obliczona wartość liczbowa (np. \"zdejmij ze stanu\" -> 0; \"zużyłem passatę\" -> 0; \"kupiłem 2 mleka\" przy obecnych 2 -> 4; \"zmień na 5\" -> 5).\\n     * Pozostałe kolumny (np. Jednostka, Minimum, Kategoria) zachowaj z tabeli, a dla nowo dodanych produktów uzupełnij logicznymi wartościami.\\n\\n2. PYTANIA I PRZEPISY (np. \"chcę zrobić naleśniki, czego brakuje?\", \"co mogę ugotować?\", \"czego brakuje w spiżarni?\", \"ile mamy jajek?\"):\\n   - Ustaw pole \"action\": \"answer\".\\n   - Pole \"row\" ustaw na null.\\n   - W polu \"reply\" udziel wyczerpującej, sformatowanej w Markdown odpowiedzi (użyj wiedzy kulinarnej i dokładnie porównaj potrzebne składniki ze stanem spiżarni w tabeli).\\n\\n3. TEMATY NIEZWIĄZANE (np. polityka, historia, pogoda):\\n   - Ustaw pole \"action\": \"answer\", \"row\": null.\\n   - W polu \"reply\" odmów: \"W arkuszu nie ma informacji na ten temat - pomagam wyłącznie w sprawdzaniu i aktualizacji zapasów oraz planowaniu kuchni.\"\\n\\nODPOWIADAJ WYŁĄCZNIE W POPRAWNYM FORMACIE JSON:\\n{\\n  \"action\": \"update\" | \"answer\",\\n  \"reply\": \"tekst odpowiedzi lub potwierdzenia dla użytkownika\",\\n  \"row\": { \"Produkt\": \"...\", \"Ilosc\": 0, ... } // lub null gdy action==\"answer\"\\n}`;\n\nconst userPrompt = `DANE Z ARKUSZA GOOGLE:\\n${sheetData}\\n\\nPOLECENIE / WIADOMOŚĆ UŻYTKOWNIKA:\\n${chatInput || '(brak pytania - przedstaw się i napisz w czym możesz pomóc)'}`;\n\nconst fullPrompt = `${systemPrompt}\\n\\n========================================\\n${userPrompt}`;\n\nreturn [{\n  json: {\n    chatInput,\n    rowCount: rows.length,\n    payload: {\n      contents: [\n        {\n          parts: [\n            { text: fullPrompt }\n          ]\n        }\n      ],\n      generationConfig: {\n        temperature: 0.1,\n        responseMimeType: \"application/json\",\n        maxOutputTokens: 8192\n      }\n    }\n  }\n}];"
       },
       "id": "prepare-prompt",
       "name": "Przygotuj prompt i dane",
@@ -62,7 +62,7 @@
         "options": {}
       },
       "id": "gemini-ai",
-      "name": "Gemini AI (Analiza arkusza)",
+      "name": "Gemini AI (Analiza i decyzja)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [780, 300],
@@ -75,13 +75,92 @@
     },
     {
       "parameters": {
-        "jsCode": "// Wyciągnięcie pełnej odpowiedzi wygenerowanej przez Gemini (łączenie wszystkich części)\nconst resp = $input.first().json;\nlet reply = '';\n\ntry {\n  const candidate = resp.candidates && resp.candidates[0];\n  if (candidate && candidate.content && candidate.content.parts) {\n    // Łączymy wszystkie fragmenty tekstowe (odrzucając ewentualne wewnętrzne myśli modelu 'thought')\n    const validParts = candidate.content.parts.filter(p => !p.thought);\n    const partsToUse = validParts.length > 0 ? validParts : candidate.content.parts;\n    reply = partsToUse.map(p => p.text || '').join('');\n  } else if (resp.text) {\n    reply = resp.text;\n  }\n} catch (e) {\n  if (resp.error) {\n    reply = `⚠️ Błąd API Gemini: ${resp.error.message || JSON.stringify(resp.error)}`;\n  } else {\n    reply = '⚠️ Przepraszam, nie udało się uzyskać odpowiedzi na podstawie danych z arkusza.';\n  }\n}\n\nif (!reply.trim()) {\n  if (resp.error) {\n    reply = `⚠️ Błąd API Gemini: ${resp.error.message || JSON.stringify(resp.error)}`;\n  } else {\n    reply = '⚠️ Model nie zwrócił żadnej odpowiedzi.';\n  }\n}\n\nreturn [{ json: { output: reply.trim() } }];"
+        "jsCode": "// Parsowanie odpowiedzi JSON wygenerowanej przez Gemini\nconst resp = $input.first().json;\nlet parsed = null;\n\ntry {\n  const candidate = resp.candidates && resp.candidates[0];\n  if (candidate && candidate.content && candidate.content.parts) {\n    const validParts = candidate.content.parts.filter(p => !p.thought);\n    const partsToUse = validParts.length > 0 ? validParts : candidate.content.parts;\n    const rawText = partsToUse.map(p => p.text || '').join('').trim();\n    const cleaned = rawText.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/i, '').trim();\n    parsed = JSON.parse(cleaned);\n  } else if (resp.text) {\n    parsed = JSON.parse(resp.text);\n  }\n} catch (e) {\n  parsed = null;\n}\n\nif (!parsed || typeof parsed !== 'object') {\n  return [{\n    json: {\n      action: 'answer',\n      reply: '⚠️ Nie udało się zinterpretować polecenia. Spróbuj zadać je ponownie.'\n    }\n  }];\n}\n\n// Jeśli akcją jest modyfikacja arkusza i mamy wiersz do zapisu\nif (parsed.action === 'update' && parsed.row && typeof parsed.row === 'object') {\n  return [{\n    json: {\n      ...parsed.row,\n      action: 'update',\n      reply: parsed.reply || '✅ Zaktualizowano arkusz.'\n    }\n  }];\n}\n\n// W przeciwnym razie zwykła odpowiedź tekstowa\nreturn [{\n  json: {\n    action: 'answer',\n    reply: parsed.reply || 'Gotowe!'\n  }\n}];"
       },
-      "id": "format-response",
-      "name": "Formatuj odpowiedź",
+      "id": "parse-decision",
+      "name": "Parsuj decyzję AI",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-update-action",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "update",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-action",
+      "name": "Czy modyfikować arkusz?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Spizarnia",
+          "mode": "name"
+        },
+        "dataMode": "autoMapInputData",
+        "columnToMatchOn": "Produkt",
+        "options": {}
+      },
+      "id": "sheets-update",
+      "name": "Zapis / Aktualizacja arkusza",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 180],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_GOOGLE_SHEETS_CRED",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Potwierdzenie pomyślnego zapisu w arkuszu\nconst decision = $('Parsuj decyzję AI').first().json;\nconst reply = decision.reply || '✅ Pomyślnie zaktualizowano dane w Arkuszu Google!';\nreturn [{ json: { output: reply } }];"
+      },
+      "id": "format-update-response",
+      "name": "Formatuj potwierdzenie zapisu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Przekazanie standardowej odpowiedzi czatu\nconst item = $input.first().json;\nconst reply = item.reply || 'Gotowe!';\nreturn [{ json: { output: reply } }];"
+      },
+      "id": "format-answer-response",
+      "name": "Formatuj odpowiedź (Czat)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 420]
     }
   ],
   "connections": {
@@ -111,18 +190,58 @@
       "main": [
         [
           {
-            "node": "Gemini AI (Analiza arkusza)",
+            "node": "Gemini AI (Analiza i decyzja)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Gemini AI (Analiza arkusza)": {
+    "Gemini AI (Analiza i decyzja)": {
       "main": [
         [
           {
-            "node": "Formatuj odpowiedź",
+            "node": "Parsuj decyzję AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsuj decyzję AI": {
+      "main": [
+        [
+          {
+            "node": "Czy modyfikować arkusz?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Czy modyfikować arkusz?": {
+      "main": [
+        [
+          {
+            "node": "Zapis / Aktualizacja arkusza",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Formatuj odpowiedź (Czat)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zapis / Aktualizacja arkusza": {
+      "main": [
+        [
+          {
+            "node": "Formatuj potwierdzenie zapisu",
             "type": "main",
             "index": 0
           }

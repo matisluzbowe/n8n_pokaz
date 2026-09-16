@@ -4,7 +4,11 @@ Ten projekt to gotowy workflow n8n, który przekształca Twój Arkusz Google w *
 
 ### Co potrafi asystent?
 - **Odpowiada na dowolne pytania w języku naturalnym** na temat danych w podpiętym Arkuszu Google (np. *„Czego nam brakuje i co muszę dokupić?”*, *„Ile mamy makaronu?”*, *„Co mogę przygotować na obiad z tego co mamy?”*).
-- **Ścisłe uziemienie (Strict Grounding):** model AI (Google Gemini) posiada sztywną instrukcję korzystania **wyłącznie** z danych w arkuszu. Jeśli zapytasz go o cokolwiek spoza arkusza (np. ogólne wiadomości ze świata, pogodę czy produkty spoza tabeli), asystent odpowie wprost: *„W arkuszu nie ma informacji na ten temat”* (brak halucynacji).
+- **Modyfikuje arkusz w locie na podstawie poleceń:**
+  - Dodaje nowe produkty (np. *„Dodaj do spiżarni: Czosnek, 3 sztuki, minimum 1, kategoria Warzywa”*).
+  - Aktualizuje ilości (np. *„Kupiłem 2 kartony mleka, zaktualizuj stan”* – asystent sam obliczy nową sumę i zaktualizuje arkusz).
+  - Zdejmuje ze stanu (np. *„Zużyłem passatę, zdejmij ze stanu”* – asystent ustawi ilość na 0).
+- **Ścisłe uziemienie (Strict Grounding):** asystent pilnuje kontekstu Twojej spiżarni i magazynu – odrzuca pytania niezwiązane z danymi w arkuszu.
 - **Wbudowane okno czatu n8n:** rozmawiasz z asystentem bezpośrednio w przeglądarce (lokalnie, bez konieczności stawiania tuneli, rejestracji numerów czy instalacji aplikacji zewnętrznych).
 
 > 💡 **Wskazówka architektoniczna (Demo vs Produkcja):**  
@@ -103,9 +107,10 @@ Przy pierwszym uruchomieniu n8n poprosi o założenie konta (e-mail + hasło –
 
 1. W n8n kliknij **… (trzy kropki w prawym górnym rogu) → Import from File**.
 2. Wybierz plik `workflow-spizarnia-chat.json`.
-3. Podłącz poświadczenia:
-   - Węzeł **Odczyt arkusza (Google Sheets)** → wybierz swoje poświadczenie Google Sheets, wklej ID arkusza i upewnij się, że nazwa arkusza to `Spizarnia`.
-   - Węzeł **Gemini AI (Analiza arkusza)** → wybierz swoje poświadczenie Google Gemini.
+3. Podłącz poświadczenia do oznaczonych węzłów:
+   - Węzeł **Odczyt arkusza (Google Sheets)** → wybierz swoje poświadczenie Google Sheets, wklej ID arkusza i nazwę zakładki (np. `Spizarnia`).
+   - Węzeł **Zapis / Aktualizacja arkusza** → wybierz to samo poświadczenie Google Sheets, wklej to samo ID arkusza oraz tę samą nazwę zakładki.
+   - Węzeł **Gemini AI (Analiza i decyzja)** → wybierz swoje poświadczenie Google Gemini.
 4. Kliknij **Save**.
 5. Na dole edytora kliknij **Open Chat** (lub kliknij węzeł `Chat Trigger` → **Test chat**).
 
@@ -113,17 +118,25 @@ Przy pierwszym uruchomieniu n8n poprosi o założenie konta (e-mail + hasło –
 
 ## 💬 Przykładowe zapytania do przetestowania (Live Demo)
 
-1. **Pytanie o stany i braki:**
+1. **Modyfikacja stanu (zmiana ilości):**
+   > *„Kupiłem dzisiaj 2 kartony mleka, zaktualizuj stan w arkuszu”*  
+   *(Asystent sprawdzi ile było mleka, doda 2 i zaktualizuje komórkę w Arkuszu Google)*
+
+2. **Zdjęcie ze stanu:**
+   > *„Zużyłem passatę pomidorową, zdejmij ze stanu”*  
+   *(Asystent ustawi ilość produktu na 0 i potwierdzi zmianę)*
+
+3. **Dodanie nowego produktu:**
+   > *„Dodaj do spiżarni: Czosnek, 3 sztuki, minimum 1, kategoria Warzywa”*  
+   *(Asystent dopisze nowy wiersz na końcu arkusza)*
+
+4. **Pytanie o stany i braki:**
    > *„Czego nam brakuje i co muszę kupić w sklepie?”*  
-   *(Asystent porówna ilości z progami minimum i zwróci listę braków wraz z jednostkami)*
+   *(Asystent porówna ilości z progami minimum i zwróci listę braków)*
 
-2. **Pytanie analityczne / dedukcja:**
-   > *„Na podstawie produktów, które mamy w spiżarni, co mogę dzisiaj ugotować na obiad?”*  
-   *(Asystent sprawdzi tylko produkty, których ilość > 0 i zaproponuje danie)*
-
-3. **Test Strict Grounding (bezpieczeństwo i brak halucynacji):**
-   > *„Kto jest prezydentem Francji?”*  
-   *(Odpowiedź: „W arkuszu nie ma informacji na ten temat.”)*
+5. **Pytanie kulinarne / dedukcja:**
+   > *„Chcę zrobić naleśniki, czego mi brakuje?”*  
+   *(Asystent ustali składniki i wskaże, co masz, a co trzeba dokupić)*
 
 ---
 
