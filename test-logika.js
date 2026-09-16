@@ -42,8 +42,8 @@ ${chatInput || '(brak pytania)'}`;
       }
     ],
     generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 1500
+      temperature: 0.2,
+      maxOutputTokens: 8192
     }
   };
 }
