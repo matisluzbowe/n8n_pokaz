@@ -34,7 +34,7 @@ Wystarczy uzupełnić poświadczenia dla **Google Sheets** oraz **Google Gemini*
 
 | # | Parametr | Skąd go wziąć | Gdzie wkleić w n8n |
 |---|----------|---------------|--------------------|
-| 1 | **ID Arkusza Google** | Z adresu URL arkusza: `.../spreadsheets/d/`**`TO_JEST_ID`**`/edit` | W węźle **Odczyt arkusza (Google Sheets)** → pole **Document** |
+| 1 | **ID Arkusza Google** | Z adresu URL arkusza: `.../spreadsheets/d/`**`TO_JEST_ID`**`/edit` | W węźle **Google Sheets (Read)** oraz **Google Sheets (Append or Update)** → pole **Document** |
 | 2 | **Google Client ID** + **Client Secret** | Google Cloud Console → *APIs & Services → Credentials → OAuth client ID* | Poświadczenie **Google Sheets OAuth2 API** |
 | 3 | **Gemini API Key** | Google AI Studio → https://aistudio.google.com/apikey | Poświadczenie **Google Gemini(PaLM) Api** → pole **API Key** |
 
@@ -104,13 +104,13 @@ Przy pierwszym uruchomieniu n8n poprosi o założenie konta (e-mail + hasło –
 ---
 
 ## 📥 KROK 5 – Zaimportuj workflow i przetestuj
-
+ 
 1. W n8n kliknij **… (trzy kropki w prawym górnym rogu) → Import from File**.
 2. Wybierz plik `workflow-spizarnia-chat.json`.
 3. Podłącz poświadczenia do oznaczonych węzłów:
-   - Węzeł **Odczyt arkusza (Google Sheets)** → wybierz swoje poświadczenie Google Sheets, wklej ID arkusza i nazwę zakładki (np. `Spizarnia`).
-   - Węzeł **Zapis / Aktualizacja arkusza** → wybierz to samo poświadczenie Google Sheets, wklej to samo ID arkusza oraz tę samą nazwę zakładki.
-   - Węzeł **Gemini AI (Analiza i decyzja)** → wybierz swoje poświadczenie Google Gemini.
+   - Węzeł **Google Sheets (Read)** → wybierz swoje poświadczenie Google Sheets, wklej ID arkusza i nazwę zakładki (np. `Spizarnia`).
+   - Węzeł **Google Sheets (Append or Update)** → wybierz to samo poświadczenie Google Sheets, wklej to samo ID arkusza oraz tę samą nazwę zakładki.
+   - Węzeł **Google Gemini AI** → wybierz swoje poświadczenie Google Gemini.
 4. Kliknij **Save**.
 5. Na dole edytora kliknij **Open Chat** (lub kliknij węzeł `Chat Trigger` → **Test chat**).
 

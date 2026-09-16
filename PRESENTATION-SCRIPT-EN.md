@@ -1,243 +1,159 @@
-# 🎤 Presentation Script — "Intelligent Spreadsheet Assistant with n8n & AI"
+# Presentation Script: n8n Pantry Assistant with Google Sheets & AI
 
-**Duration:** ~15 minutes  
-**Language level:** Intermediate English (clear syntax, simple vocabulary)  
-**Format:** Read the text out loud. Text in `[SQUARE BRACKETS]` are stage directions — things to **do or show**, not to read.
-
-> Speaking tips: read slowly, pause at each `— pause —`, and look at the audience during the questions. Total spoken text is about 2,000 words, which fits comfortably in 15 minutes with the live demo.
+**Note:** Text in `[BRACKETS]` shows what to click or show on screen. Read the rest out loud in a relaxed, normal speaking voice.
 
 ---
 
-## PART 1 — Opening (about 1 minute)
+## 1. Intro (What is this project?)
 
-Good morning, everyone. Thank you for being here.
+Hi everyone. Today I want to show you a project I built in n8n. 
 
-Today I want to show you **n8n** — an open and powerful tool for building automated workflows — together with a practical example I built with it: an **AI-powered assistant that knows everything about a spreadsheet**.
+It is a simple AI assistant connected directly to a Google Spreadsheet. 
 
-— pause —
+In my case, I use it for home inventory — basically a kitchen pantry spreadsheet with about 70 items: things like pasta, milk, flour, canned food, and spices. 
 
-The example comes from daily life: a smart assistant that monitors my **home pantry spreadsheet** and helps me with shopping, recipes, and inventory. I can ask it anything in plain language through a chat window, and it answers strictly using the data in my spreadsheet.
+We all know that opening a large spreadsheet on a phone and scrolling through rows while shopping is annoying. So my goal was simple:
+- I want to talk to the spreadsheet in normal language.
+- I want to ask questions like *"What are we running low on?"* or *"Can I make pancakes with what we have?"*.
+- And I also want to **update the sheet through chat**, like saying *"I just bought 2 cartons of milk, update the stock"*, or *"We ran out of cheese, set it to zero"*.
 
-Let me show you how it works and why this pattern is so exciting.
-
----
-
-## PART 2 — What is n8n? (about 2 minutes)
-
-Here is n8n on the screen.
-
-[ON SCREEN: open the n8n canvas with the workflow, but do not zoom in yet]
-
-n8n is a **workflow automation platform**. A workflow works like a modern digital assembly line. On one end, an event *triggers* it — this is called a **trigger**. Then the data flows from one station to the next. 
-
-Each station is a **node**, and every node does one specific job: it can read a file, fetch data from Google Sheets, call an AI model, make a calculation, or send a notification.
-
-— pause —
-
-You connect nodes visually with lines and arrows. Most configuration is done through clean input forms, so you get all the power of code without having to build a web server or write hundreds of lines of boilerplate.
-
-[ACTION: point at two or three nodes on the screen with the mouse]
-
-Everything you see here is one lightweight workflow. Let's look at what this particular workflow achieves.
+Let me show you how this is set up in n8n.
 
 ---
 
-## PART 3 — The problem and the idea (about 1 minute)
+## 2. Walkthrough of the Nodes
 
-Here is the situation this workflow solves. 
+[ON SCREEN: Show the n8n canvas with the full workflow]
 
-We all work with spreadsheets — whether it's inventory at work, tracking orders, or managing food supplies at home. But opening a spreadsheet on a phone, scrolling through dozens of rows, and checking numbers manually is slow and frustrating.
+Here is the workflow. As you can see, data simply moves from left to right through a few connected nodes. Let’s go through them one by one.
 
-— pause —
+### Node 1: Chat Trigger
+[ACTION: Point at the Chat Trigger node]  
+This is where the user sends a message.  
+A quick note here: for everyday use, you could easily replace this node with **Telegram or WhatsApp**. That way, you could just text your pantry from your phone while standing in a grocery store. For this presentation, I am using n8n’s built-in chat because it runs right here in the browser and is easy to show on screen.
 
-So I asked: what if I could just **send a message in plain English or Polish** and get an immediate answer?
+### Node 2: Google Sheets (Read)
+[ACTION: Point at the Google Sheets node]  
+Whenever a message comes in, this node reads the current data from my Google Sheet. This way, the AI always sees the real, up-to-date numbers before answering.
 
-What if I could ask: *"What are we running low on?"*, or *"Can we make pasta tonight with what we have?"*, or *"How much coffee is left?"* — and receive an accurate answer in two seconds?
+### Node 3: Prepare Prompt & Data (Code Node)
+[ACTION: Point at the "Przygotuj prompt i dane" node]  
+This is a small JavaScript node. It reads the sheet columns, the units we use (like kilograms, bottles, or pieces), and packages everything for the AI model.  
+It also sets a very important rule: **the AI is only allowed to answer based on the sheet**. It cannot make things up or guess.
 
-And just as importantly: **how do we make sure the AI does not hallucinate or make things up?**
+### Node 4: Google Gemini AI
+[ACTION: Point at the Gemini AI node]  
+This node calls Google Gemini. Gemini reads the user's message and decides: is this just a question, or does the user want to change something in the spreadsheet? It gives us back a clean, structured decision.
 
-That is our goal. Now let's look at the machinery behind it.
+### Node 5: Router (If Node)
+[ACTION: Point at the "Czy modyfikować arkusz?" node]  
+Here we split the path:
+- If the user just asked a question, it skips the spreadsheet update and sends the text back to the chat.
+- If the user asked to add or change a product, it goes to the update branch.
 
----
+### Node 6: Clean Row Before Save (Code Node)
+[ACTION: Point at the "Oczyść wiersz przed zapisem" node]  
+This is a small helper node that protects the spreadsheet. It makes sure no extra temporary data gets written into the sheet. It also checks the numbers, keeps the correct item number (`Lp.`), and automatically sets the status: if the quantity is at or below minimum, it marks it as *"Restock"*, otherwise *"OK"*.
 
-## PART 4 — The big picture & The trigger (about 2 minutes)
+### Node 7: Google Sheets (Update or Append)
+[ACTION: Point at the "Zapis / Aktualizacja arkusza" node]  
+This node takes the cleaned row and updates the existing product or adds a new row at the bottom. Then, a confirmation message is sent back to the chat.
 
-[ON SCREEN: show the full workflow from left to right]
-
-Let's follow the journey of a single question through the workflow.
-
-**Step one: The Trigger.**  
-The workflow starts with a trigger node. 
-
-[ACTION: point at the Chat Trigger node]
-
-For demonstration purposes today, I am using **n8n's built-in chat trigger**. It gives us an instant chat widget directly in the browser with zero external setup. 
-
-However, in a real-world or production setup, you can easily swap this trigger for **Telegram, WhatsApp, or Slack**. That means you, your family, or your team can access the exact same assistant remotely from your smartphone anytime, anywhere. You send a quick WhatsApp message while standing in the grocery store aisle, and the assistant replies instantly.
-
-— pause —
-
-**Step two: Reading the source of truth.**  
-Next, n8n connects to **Google Sheets**. It fetches all current rows from our inventory sheet in real time.
-
-[ACTION: point at the Google Sheets node]
-
-**Step three: Context preparation & Strict Grounding.**  
-This Code node takes the user's question and packages the spreadsheet data together with strict system instructions for the AI.
-
-[ACTION: point at the "Przygotuj prompt i dane" Code node]
-
-We instruct the AI with **Strict Grounding**: it is allowed to answer **only and exclusively** based on the provided spreadsheet rows. If someone asks about something not in the sheet, the AI is instructed to say: *"There is no information about this in the sheet"*. No hallucinations, no guessing.
-
-**Step four: Google Gemini AI.**  
-The packaged data is sent to Google's Gemini model via a fast API call to analyze the question against the sheet data.
-
-[ACTION: point at the Gemini AI node]
-
-**Step five: Clean reply.**  
-Finally, n8n formats the AI's response and sends it back to the chat.
-
-Four simple steps: Chat in, Google Sheets read, Gemini analysis, Chat out. 
-
-Now let's see it live!
+Now let’s look at how it works live.
 
 ---
 
-## PART 5 — Live demo, part one: Natural language queries (about 2.5 minutes)
+## 3. Live Demo
 
-[ACTION: have the Google Sheet open in one tab, and the n8n chat window open in another tab]
+[ACTION: Open Google Sheets on the left side of the screen and the n8n chat on the right side]
 
-Let me show you our sample data first.
+On the left is my pantry spreadsheet with 70 items. On the right is the chat. Let's test a few real examples.
 
-[ON SCREEN: open the Google Sheet]
+### Test 1: Checking what we need to buy
+Let's ask what is running low.
 
-Here is our pantry sheet. We have columns for **Product**, **Current Amount**, **Unit**, **Minimum Threshold**, and **Category**. Notice that milk is at 0, eggs are at 4 (while minimum is 10), and coffee is at 0.
+[ACTION: Type into the chat:]  
+`Czego nam brakuje i co muszę dokupić w sklepie?`  
+*(What are we running low on and what do I need to buy?)*
 
-[ON SCREEN: switch to the n8n chat window]
+[ACTION: Press Enter]
 
-Now let's talk to our assistant like a human. I won't use special codes or commands. I will just ask:
+Look at the answer: in a couple of seconds, it checked all 70 items against their minimum levels. It tells me right away that we need things like basmati rice, rye flour, butter, and spices, and it even tells me which shelf they belong to.
 
-**"Czego nam brakuje i co muszę kupić w sklepie?"** *(or in English: "What is running low and what do I need to buy?")*
+### Test 2: Checking a recipe
+Now let's ask a cooking question.
 
-[ACTION: type the question into the chat, press enter, and wait a moment]
+[ACTION: Type into the chat:]  
+`Chcę zrobić naleśniki, czy mam wszystkie składniki?`  
+*(I want to make pancakes, do I have all the ingredients?)*
 
-— pause —
+[ACTION: Press Enter]
 
-Look at the answer. In just two seconds:
-- The assistant checked all rows against their minimum levels.
-- It immediately identified that we are out of Milk and Coffee, and that Eggs are below our threshold.
-- It formatted everything into a clean, bulleted shopping list with units!
+The model knows what ingredients go into classic pancakes — flour, milk, eggs, sugar, and oil. It checked the spreadsheet and confirmed:
+- We have flour in the lower cabinet,
+- Milk in the pantry,
+- Eggs in the fridge,
+- Sugar and oil are available too.  
+So it confirms we have everything we need.
 
-Notice what just happened: I didn't have to write custom filtering logic or hardcoded scripts. The AI understood the column headers and the data relationships naturally.
+### Test 3: Updating an item live
+Now let’s actually change the spreadsheet from the chat.  
+Look at **Row 56** in the Google Sheet: `Mleko UHT` currently has a quantity of `6`. Let's say I just bought 2 more cartons.
 
----
+[ACTION: Type into the chat:]  
+`Kupiłem dzisiaj 2 mleka UHT, zaktualizuj stan w arkuszu`  
+*(I bought 2 UHT milks today, update the stock in the sheet)*
 
-## PART 6 — Live demo, part two: Smart reasoning & Strict Grounding test (about 2.5 minutes)
+[ACTION: Press Enter]
 
-Now let's try two even more interesting tests.
+[ACTION: Point at row 56 in the spreadsheet]  
+Look at row 56 on the left: the quantity just changed from 6 to 8.  
+And the chat confirms: *"Updated stock: Mleko UHT is now 8 pcs"*.
 
-First, let's test **reasoning over the data**:
+### Test 4: Setting an item to zero (Restock status)
+Now look at **Row 57**: `Ser żółty` (cheese). Let’s say we finished it.
 
-[ACTION: type into the chat:]  
-**"Na podstawie produktów, które mamy w spiżarni, co mogę dzisiaj ugotować na obiad?"**  
-*(English: "Based only on what we currently have in our pantry, what can I cook for dinner?")*
+[ACTION: Type into the chat:]  
+`Zużyłem cały ser żółty, zdejmij ze stanu`  
+*(I used up all the yellow cheese, take it off stock)*
 
-[ACTION: press enter and wait for the response]
+[ACTION: Press Enter]
 
-— pause —
+[ACTION: Point at row 57 in the spreadsheet]  
+In row 57:
+- The quantity dropped to `0`.
+- And the status automatically changed to `⚠ Uzupełnij` (Restock), because 0 is below our minimum.  
+All other columns like category and fridge location stayed exactly the same.
 
-Look at what it does. It looks at the items that have positive quantities: flour, pasta, canned tomatoes, rice, and oil. It says: *"You have pasta, passata, and oil, so you can easily make spaghetti with tomato sauce!"* It didn't suggest dishes that require milk or coffee, because it checked the amounts.
+### Test 5: Off-topic question (No hallucinations)
+What happens if I ask something completely unrelated?
 
-— pause —
+[ACTION: Type into the chat:]  
+`Kto jest prezydentem Francji?`  
+*(Who is the president of France?)*
 
-Now, here is the most crucial test for any enterprise AI application: **Strict Grounding and safety**.
+[ACTION: Press Enter]
 
-What happens if I ask a question completely unrelated to this spreadsheet?
-
-[ACTION: type into the chat:]  
-**"Kto jest prezydentem Francji?"** *(English: "Who is the president of France?")*
-
-[ACTION: press enter]
-
-— pause —
-
-Look at the response:  
-**"W arkuszu nie ma informacji na ten temat."** *(The sheet contains no information on this topic.)*
-
-[ON SCREEN: highlight this answer in the chat]
-
-This is a critical moment. Most standard AI chatbots would happily answer questions about French politics, give general cooking advice from the internet, or make up numbers. 
-
-By designing our prompt with strict boundary enforcement, we guarantee that our assistant remains **a dedicated, reliable interface to our specific database**, and nothing else.
-
----
-
-## PART 7 — A look under the hood (about 2 minutes)
-
-Let's look inside the n8n canvas to see how simple this really is.
-
-[ON SCREEN: switch back to the n8n canvas and double-click the "Przygotuj prompt i dane" node]
-
-Here you can see the JavaScript code. It does three things:
-1. It takes the array of rows from Google Sheets.
-2. It grabs the user's message from the Chat Trigger.
-3. It combines them into a prompt with our strict grounding rules and sets the model temperature to 0.1 for high precision and zero randomness.
-
-[ACTION: close the code node and click on the "Gemini AI" node]
-
-Here, n8n sends this JSON payload straight to Google Gemini's REST API using standard credentials. 
-
-And notice: **the entire orchestration runs locally on my machine**. n8n handles the state, the authentication, and the pipeline. If I want to change the spreadsheet, I only change one ID.
+The assistant replies: *"There is no information about this in the sheet"*.  
+It refuses to answer off-topic questions, so we know it won't hallucinate or get confused.
 
 ---
 
-## PART 8 — Real-world & business applications (about 1 minute)
+## 4. Ideas for the Future & How This Was Built
 
-We used a kitchen pantry as an intuitive example today, but consider the business implications of this exact same architecture:
+To finish up, two quick thoughts:
 
-- **Warehouse & Inventory:** A warehouse manager can ask WhatsApp: *"How many pallets of item X do we have in Zone B?"*
-- **Sales & CRM:** A sales rep on the road can ask Telegram: *"What was the last contact date for client ABC?"*
-- **HR & Operations:** An employee can ask: *"Who is on call this weekend?"*
+First, how you could expand this:  
+You could easily add image recognition. Instead of typing what you bought, you could just take a photo of your supermarket receipt, a picture of the groceries on your counter, or a photo inside your fridge. A vision model can read the products from the image and update the sheet automatically.
 
-You don't need to build expensive custom apps or portals. You take an existing spreadsheet or database, connect n8n, plug in an LLM with strict grounding, attach a messaging channel like WhatsApp or Slack, and you have an enterprise-grade interactive data assistant in an afternoon.
-
----
-
-## PART 9 — Closing & Q&A (about 30 seconds)
-
-To sum up:
-We built an intelligent, chat-driven assistant that connects directly to Google Sheets and uses Google Gemini for reasoning. 
-It understands natural language, respects strict data boundaries, and can be connected to internal web chats, Telegram, or WhatsApp for mobile access.
-
-Thank you very much for your time. I would be happy to answer any questions!
-
-[ACTION: open the floor for questions]
+Second, how this was actually built:  
+You don't need to manually click and write all these workflows from scratch anymore. You can just ask an AI model in Visual Studio Code or Antigravity.  
+For this project, I used **Gemini Pro inside Antigravity** with access to skills. The AI practically built the workflow, the code nodes, and the validation logic for me, and my job was simply testing it and tweaking the details together with the model.
 
 ---
 
-## 🗒️ Quick timing guide
+## 5. Wrap Up
 
-| Part | Topic | Time |
-|------|-------|------|
-| 1 | Opening | 1:00 |
-| 2 | What is n8n | 2:00 |
-| 3 | The problem & the idea | 1:00 |
-| 4 | The big picture & Trigger (Demo vs Telegram/WhatsApp) | 2:00 |
-| 5 | Live demo: Shopping list & natural language | 2:30 |
-| 6 | Live demo: Reasoning & Strict Grounding test | 2:30 |
-| 7 | Under the hood & prompt structure | 2:00 |
-| 8 | Business & practical applications | 1:00 |
-| 9 | Closing + Q&A | 0:30 |
-| **Total** | | **~15:00** |
+That’s basically it: n8n handles the automation, Google Sheets holds the data, and Gemini does the thinking.
 
----
-
-## 💡 Backup plan (if the live demo fails)
-
-If the internet or API connection hiccups during the presentation:
-1. **Stay calm and say:** *"Let's look at the result from an execution I ran just before this session."*
-2. In n8n, click on the **Executions** history tab on the left to show the saved inputs, the exact Gemini response, and output data.
-3. Open the Google Sheet and explain how the columns map to the prompt in the code node.
-4. If needed, run `node test-logika.js` in the terminal to demonstrate the prompt generation offline!
-
-> **Tip:** Perform one test run in the chat 5 minutes before your talk so that the n8n Executions log has a fresh, successful execution ready to display.
+Thank you, and if you have any questions, I’d be happy to answer!
