@@ -38,16 +38,19 @@ Wystarczy uzupełnić poświadczenia dla **Google Sheets** oraz **Google Gemini*
 
 ## ▶️ KROK 1 – Uruchom serwer n8n
 
-1. Otwórz **PowerShell** w tym folderze.
-2. Wpisz i zatwierdź:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\start-n8n.ps1
-   ```
-3. Otwórz w przeglądarce:
-   👉 **http://localhost:5678**
-4. Przy pierwszym uruchomieniu n8n poprosi o założenie lokalnego konta właściciela (e-mail + hasło).
+Możesz uruchomić serwer na dwa proste sposoby:
+- **Sposób 1 (najprostszy):** Kliknij dwukrotnie w plik `start-n8n.bat` w folderze projektu.
+- **Sposób 2 (przez terminal):** Otwórz PowerShell w tym folderze i wpisz:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\start-n8n.ps1
+  ```
 
-> Aby zatrzymać serwer: naciśnij **Ctrl + C** w oknie terminala.
+Gdy w oknie pojawi się informacja o uruchomieniu, otwórz w przeglądarce:
+👉 **http://localhost:5678**
+
+Przy pierwszym uruchomieniu n8n poprosi o założenie konta (e-mail + hasło – to konto lokalne na Twoim komputerze).
+
+> Aby zatrzymać serwer: naciśnij **Ctrl + C** w oknie terminala lub po prostu zamknij to okno.
 
 ---
 
@@ -91,6 +94,8 @@ Wystarczy uzupełnić poświadczenia dla **Google Sheets** oraz **Google Gemini*
 3. W n8n:
    - Wejdź w **Credentials → Add Credential → Google Gemini(PaLM) Api**.
    - Wklej klucz w pole **API Key** i zapisz.
+
+> 💡 **Model:** Domyślnie węzeł w workflow używa modelu `gemini-3.6-flash`. W razie potrzeby zmiany modelu wystarczy otworzyć węzeł **Gemini AI (Analiza arkusza)** i w polu URL zmienić nazwę modelu na wybraną (np. `gemini-3.6-flash` lub `gemini-2.0-flash`).
 
 ---
 
