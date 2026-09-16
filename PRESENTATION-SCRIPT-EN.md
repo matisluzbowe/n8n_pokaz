@@ -37,27 +37,27 @@ A quick note here: for everyday use, you could easily replace this node with **T
 Whenever a message comes in, this node reads the current data from my Google Sheet. This way, the AI always sees the real, up-to-date numbers before answering.
 
 ### Node 3: Prepare Prompt & Data (Code Node)
-[ACTION: Point at the "Przygotuj prompt i dane" node]  
+[ACTION: Point at the "Prepare Prompt & Data" node]  
 This is a small JavaScript node. It reads the sheet columns, the units we use (like kilograms, bottles, or pieces), and packages everything for the AI model.  
 It also sets a very important rule: **the AI is only allowed to answer based on the sheet**. It cannot make things up or guess.
 
 ### Node 4: Google Gemini AI
-[ACTION: Point at the Gemini AI node]  
+[ACTION: Point at the "Google Gemini AI" node]  
 This node calls Google Gemini. Gemini reads the user's message and decides: is this just a question, or does the user want to change something in the spreadsheet? It gives us back a clean, structured decision.
 
 ### Node 5: Router (If Node)
-[ACTION: Point at the "Czy modyfikować arkusz?" node]  
+[ACTION: Point at the "Check Action (Modify Sheet?)" node]  
 Here we split the path:
 - If the user just asked a question, it skips the spreadsheet update and sends the text back to the chat.
 - If the user asked to add or change a product, it goes to the update branch.
 
 ### Node 6: Clean Row Before Save (Code Node)
-[ACTION: Point at the "Oczyść wiersz przed zapisem" node]  
+[ACTION: Point at the "Clean Row Before Save" node]  
 This is a small helper node that protects the spreadsheet. It makes sure no extra temporary data gets written into the sheet. It also checks the numbers, keeps the correct item number (`Lp.`), and automatically sets the status: if the quantity is at or below minimum, it marks it as *"Restock"*, otherwise *"OK"*.
 
-### Node 7: Google Sheets (Update or Append)
-[ACTION: Point at the "Zapis / Aktualizacja arkusza" node]  
-This node takes the cleaned row and updates the existing product or adds a new row at the bottom. Then, a confirmation message is sent back to the chat.
+### Node 7: Google Sheets (Append or Update)
+[ACTION: Point at the "Google Sheets (Append or Update)" node]  
+This node takes the cleaned row and updates the existing product or fills in the next empty row in the table. Then, a confirmation message is sent back to the chat.
 
 Now let’s look at how it works live.
 

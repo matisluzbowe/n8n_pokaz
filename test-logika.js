@@ -119,14 +119,22 @@ function cleanRowBeforeSave(sheetRows, input) {
     }
   }
 
+  // 4. Obsługa Lp. i szukanie pierwszego pustego wiersza w tabeli
   if (existingRow && existingRow[lpKey]) {
     cleanRow[lpKey] = existingRow[lpKey];
-  } else if (!cleanRow[lpKey]) {
-    const maxLp = sheetRows.reduce((max, r) => {
-      const val = parseInt(r[lpKey], 10);
-      return !isNaN(val) && val > max ? val : max;
-    }, 0);
-    cleanRow[lpKey] = maxLp + 1;
+  } else {
+    // Nowy produkt: znajdź pierwszy wiersz w tabeli, który ma puste pole Produkt
+    const emptyRow = sheetRows.find(r => !r[prodKey] || String(r[prodKey]).trim() === '');
+    if (emptyRow && emptyRow[lpKey] && String(emptyRow[lpKey]).trim() !== '') {
+      const parsedLp = parseInt(String(emptyRow[lpKey]), 10);
+      cleanRow[lpKey] = !isNaN(parsedLp) ? parsedLp : emptyRow[lpKey];
+    } else {
+      const maxLp = sheetRows.reduce((max, r) => {
+        const val = parseInt(r[lpKey], 10);
+        return !isNaN(val) && val > max ? val : max;
+      }, 0);
+      cleanRow[lpKey] = maxLp + 1;
+    }
   }
 
   if (cleanRow[qtyKey] !== undefined) {
@@ -173,23 +181,56 @@ const simUpdate = JSON.stringify({
 const parsedUpdate = parseDecision(simUpdate);
 console.log('Wynik parsowania decyzji (zawiera jeszcze metadane):', Object.keys(parsedUpdate));
 
-console.log('\n=== TEST 3: Oczyszczenie wiersza przed wysłaniem do Google Sheets ===');
-const userTableRows = [
+console.log('\n=== TEST 3: Dodanie nowego produktu do pierwszego pustego wiersza w tabeli ===');
+const tableWithEmptyRows = [
+  { 'Lp.': 1, 'Produkt': 'Makaron spaghetti', 'Kategoria': 'Makarony i kasze', 'Ilość': 4, 'Jednostka': 'opak.', 'Minimum': 2, 'Data ważności': '2027-06-01', 'Miejsce': 'Szafka górna', 'Status': '✔ OK' },
+  { 'Lp.': 70, 'Produkt': 'Czosnek', 'Kategoria': 'Inne', 'Ilość': 3, 'Jednostka': 'szt.', 'Minimum': 1, 'Data ważności': '2026-11-01', 'Miejsce': 'Spiżarnia', 'Status': '✔ OK' },
+  { 'Lp.': 71, 'Produkt': '', 'Kategoria': '', 'Ilość': '', 'Jednostka': '', 'Minimum': '', 'Data ważności': '', 'Miejsce': '', 'Status': '' },
+  { 'Lp.': 72, 'Produkt': '', 'Kategoria': '', 'Ilość': '', 'Jednostka': '', 'Minimum': '', 'Data ważności': '', 'Miejsce': '', 'Status': '' }
+];
+
+const cleanedNewItem = cleanRowBeforeSave(tableWithEmptyRows, parsedUpdate);
+console.log('Oczyszczony wiersz do zapisu w arkuszu (nowy produkt trafił do pustego wiersza):');
+console.log(cleanedNewItem);
+if (cleanedNewItem['Lp.'] !== 71) {
+  throw new Error(`BŁĄD: Nowy produkt powinien otrzymać Lp. 71 z pierwszego pustego wiersza, a otrzymał: ${cleanedNewItem['Lp.']}`);
+}
+if (cleanedNewItem.action || cleanedNewItem.reply) {
+  throw new Error('BŁĄD: Pola action lub reply wyciekły do arkusza!');
+}
+if (cleanedNewItem.Status !== '⚠ Uzupełnij') {
+  throw new Error('BŁĄD: Niepoprawny status dla Ilość <= Minimum!');
+}
+console.log('✅ Nowy produkt pomyślnie trafił do pierwszego pustego wiersza tabeli (Lp. 71)!');
+
+console.log('\n=== TEST 3b: Aktualizacja istniejącego produktu (zachowanie oryginalnego Lp.) ===');
+const simExistingUpdate = {
+  Produkt: 'Makaron spaghetti',
+  'Ilość': 6,
+  action: 'update',
+  reply: '✅ Zaktualizowano makaron'
+};
+const cleanedExisting = cleanRowBeforeSave(tableWithEmptyRows, simExistingUpdate);
+console.log('Zaktualizowany istniejący produkt:');
+console.log(cleanedExisting);
+if (cleanedExisting['Lp.'] !== 1) {
+  throw new Error(`BŁĄD: Istniejący produkt powinien zachować Lp. 1, a otrzymał: ${cleanedExisting['Lp.']}`);
+}
+if (cleanedExisting['Ilość'] !== 6 || cleanedExisting.Status !== '✔ OK') {
+  throw new Error('BŁĄD: Niepoprawna ilość lub status dla zaktualizowanego produktu!');
+}
+console.log('✅ Istniejący produkt zachował swoje oryginalne Lp. 1!');
+
+console.log('\n=== TEST 3c: Nowy produkt gdy brak pustych wierszy w tabeli (maxLp + 1) ===');
+const tableFull = [
   { 'Lp.': 1, 'Produkt': 'Makaron spaghetti', 'Kategoria': 'Makarony i kasze', 'Ilość': 4, 'Jednostka': 'opak.', 'Minimum': 2, 'Data ważności': '2027-06-01', 'Miejsce': 'Szafka górna', 'Status': '✔ OK' },
   { 'Lp.': 70, 'Produkt': 'Czosnek', 'Kategoria': 'Inne', 'Ilość': 3, 'Jednostka': 'szt.', 'Minimum': 1, 'Data ważności': '2026-11-01', 'Miejsce': 'Spiżarnia', 'Status': '✔ OK' }
 ];
-
-const cleaned = cleanRowBeforeSave(userTableRows, parsedUpdate);
-console.log('Oczyszczony wiersz do zapisu w arkuszu:');
-console.log(cleaned);
-if (cleaned.action || cleaned.reply) {
-  throw new Error('BŁĄD: Pola action lub reply wyciekły do arkusza!');
+const cleanedFull = cleanRowBeforeSave(tableFull, parsedUpdate);
+if (cleanedFull['Lp.'] !== 71) {
+  throw new Error(`BŁĄD: Przy braku wolnych wierszy powinien otrzymać max + 1 (71), a otrzymał: ${cleanedFull['Lp.']}`);
 }
-if (cleaned.Status !== '⚠ Uzupełnij') {
-  throw new Error('BŁĄD: Niepoprawny status dla Ilość <= Minimum!');
-}
-console.log('✅ Pola action i reply zostały pomyślnie odcięte!');
-console.log('✅ Status został automatycznie skorygowany wg reguły ilości i minimum!');
+console.log('✅ Przy braku wolnych wierszy poprawnie wyliczono maxLp + 1 (71)!');
 
 console.log('\n=== TEST 4: Symulacja odpowiedzi Gemini dla pytania o przepis ===');
 const simAnswer = JSON.stringify({
