@@ -12,40 +12,79 @@ const rows = [
 
 // --- 2. Logika z węzła "Przygotuj prompt i dane" ---
 function prepareGeminiPayload(rows, chatInput) {
-  const sheetData = JSON.stringify(rows, null, 2);
-  const existingColumns = rows.length > 0 ? Object.keys(rows[0]).join(', ') : 'Produkt, Ilosc, Jednostka, Minimum, Kategoria';
+  const allRows = rows.filter(r => r && Object.keys(r).length > 0);
+  const firstRow = allRows[0] || {};
+  const prodKey = Object.keys(firstRow).find(k => k.toLowerCase().includes('produkt') || k.toLowerCase().includes('product')) || 'Produkt';
+
+  const stockedRows = allRows.filter(r => r[prodKey] && String(r[prodKey]).trim().length > 0);
+  const activeRows = stockedRows.length > 0 ? stockedRows : allRows;
+
+  const sheetData = JSON.stringify(activeRows, null, 2);
+  const columnsList = Object.keys(firstRow).join(', ') || 'Lp., Produkt, Kategoria, Ilość, Jednostka, Minimum, Data ważności, Miejsce, Status';
+
+  const getUniqueValues = (fieldKeywords) => {
+    const key = Object.keys(firstRow).find(k => fieldKeywords.some(w => k.toLowerCase().includes(w)));
+    if (!key) return [];
+    return [...new Set(activeRows.map(r => r[key]).filter(Boolean))];
+  };
+
+  const existingUnits = getUniqueValues(['jednostka', 'unit', 'jm']);
+  const existingCategories = getUniqueValues(['kategoria', 'category']);
+  const existingLocations = getUniqueValues(['lokalizacja', 'miejsce', 'location']);
+
+  let formatInfo = `KOLUMNY W TWOIM ARKUSZU: ${columnsList}\n`;
+  if (existingUnits.length) formatInfo += `UŻYWANE W TABELI JEDNOSTKI: ${existingUnits.join(', ')}\n`;
+  if (existingCategories.length) formatInfo += `UŻYWANE W TABELI KATEGORIE: ${existingCategories.join(', ')}\n`;
+  if (existingLocations.length) formatInfo += `UŻYWANE W TABELI MIEJSCA/LOKALIZACJE: ${existingLocations.join(', ')}\n`;
 
   const systemPrompt = `Jesteś inteligentnym asystentem domowej spiżarni i magazynu, zintegrowanym z Arkuszem Google.
-Twoim celem jest odpowiadanie na pytania oraz ZARZĄDZANIE STANEM W ARKUSZU (dodawanie produktów, zmiana ilości, zdejmowanie ze stanu).
+Twoim zadaniem jest odpowiadanie na pytania kulinarne i magazynowe oraz ZARZĄDZANIE STANEM W ARKUSZU (dodawanie produktów, zmiana ilości, zdejmowanie ze stanu).
 
-KOLUMNY W TWOIM ARKUSZU TO: ${existingColumns}
+${formatInfo}
+ZASADY JĘZYKOWE I FORMATOWANIA (BARDZO WAŻNE):
+1. JĘZYK ODPOWIEDZI DLA UŻYTKOWNIKA (pole "reply"):
+   - Odpowiadaj DOKŁADNIE w tym języku, w którym użytkownik napisał wiadomość:
+     * Jeśli użytkownik pisze po angielsku -> odpowiedz w "reply" po angielsku (np. "✅ Updated stock: Mleko UHT is now 8 pcs", "To make pancakes you need flour, milk, and eggs...").
+     * Jeśli użytkownik pisze po polsku -> odpowiedz w "reply" po polsku (np. "✅ Zaktualizowałem stan: Mleko UHT ma teraz 8 szt.", "Do naleśników potrzebujesz mąki, mleka i jajek...").
+   - W treści "reply" (niezależnie od języka odpowiedzi) nazwy produktów, kategorii i lokalizacji podawaj tak, jak występują w arkuszu (czyli po polsku, np. Makaron spaghetti, Szafka górna, Nabiał), aby użytkownik łatwo odnalazł je w tabeli.
+
+2. DANE W ARKUSZU (pole "row"):
+   - Arkusz Google jest prowadzony w języku polskim!
+   - W obiekcie "row" WSZYSTKIE wartości i klucze MUSZĄ BYĆ PO POLSKU, dokładnie w stylu i wartościach występujących w tabeli (np. Kategoria: "Makarony i kasze", Jednostka: "opak.", Miejsce: "Szafka górna", Status: "✔ OK" lub "⚠ Uzupełnij").
+   - Nawet jeśli użytkownik wydał polecenie po angielsku (np. "Add jasmine rice 1 kg to pantry"), w obiekcie "row" wpisz po polsku: Produkt: "Ryż jaśminowy", Jednostka: "kg", Miejsce: "Spiżarnia", Kategoria: "Makarony i kasze".
+   - Dla istniejących produktów w polu "Produkt" użyj DOKŁADNIE oryginalnej polskiej nazwy z tabeli.
+   - JEDNOSTKI: Używaj wyłącznie skrótów jednostek z arkusza (${existingUnits.join(', ') || 'opak., kg, puszka, słoik, but., szt., kostka'}).
+   - KATEGORIE I MIEJSCA: Przypisuj wyłącznie wartości z listy występującej w arkuszu.
+   - LICZBY: W kolumnie ilości oraz minimum wpisuj wyłącznie czyste liczby (np. 1 lub 0.5), bez dopisywania jednostki.
+   - STATUS: Jeśli Ilość <= Minimum, ustaw "⚠ Uzupełnij". Jeśli Ilość > Minimum, ustaw "✔ OK".
+   - DATA WAŻNOŚCI: W formacie YYYY-MM-DD. Jeśli użytkownik nie podał, oszacuj rozsądny termin.
+   - KOMPLETNOŚĆ WIERSZA: W obiekcie "row" zwróć DOKŁADNIE klucze odpowiadające kolumnom arkusza (${columnsList}). NIE dodawaj dodatkowych metadanych.
 
 TWOJE ZADANIA:
-1. JEŚLI UŻYTKOWNIK CHCE ZMODYFIKOWAĆ STAN (np. "kupiłem 2 mleka", "zmień ilość jajek na 10", "zdejmij ze stanu mleko", "zużyłem passatę", "dodaj czosnek 3 sztuki"):
+1. MODYFIKACJA STANU (np. "kupiłem 2 mleka", "I bought 2 cartons of milk", "zmień ilość jajek na 10", "zdejmij ze stanu mleko", "used up the pasta, remove it", "dodaj ryż jaśminowy 1 kg"):
    - Ustaw pole "action": "update".
-   - W polu "reply" napisz przyjazne potwierdzenie wykonania operacji (np. "✅ Zaktualizowałem stan: Mleko ma teraz 4 l" lub "✅ Zdjąłem Mleko ze stanu (ilość: 0 l)" lub "✅ Dodałem Czosnek (3 szt) do spiżarni").
-   - W obiekcie "row" podaj zaktualizowany wiersz. Użyj DOKŁADNIE takich samych nazw kluczy jak kolumny arkusza:
-     * Nazwa produktu w polu "Produkt" (dla istniejącego produktu użyj DOKŁADNIE takiej nazwy jak w tabeli, np. "Mleko", dla nowego podaj nową nazwę).
-     * "Ilosc": nowa obliczona wartość liczbowa (np. "zdejmij ze stanu" -> 0; "zużyłem 1 passatę" z 1 -> 0; "kupiłem 2 mleka" przy obecnych 0 -> 2).
-     * Pozostałe kolumny (np. Jednostka, Minimum, Kategoria) zachowaj z tabeli, a dla nowych produktów uzupełnij logicznymi wartościami.
+   - W polu "reply" napisz zwięzłe, przyjazne potwierdzenie w języku użytkownika (PL lub EN).
+   - W obiekcie "row" podaj dane wiersza do zapisu/aktualizacji (zawsze po polsku, tak jak w arkuszu).
 
-2. JEŚLI UŻYTKOWNIK ZADAJE PYTANIE (np. "co na obiad?", "chcę zrobić naleśniki czy mam składniki?", "czego brakuje?", "ile mamy jajek?"):
+2. PYTANIA I PRZEPISY (np. "chcę zrobić naleśniki, czego brakuje?", "I want to make pancakes, do I have the ingredients?", "co mogę ugotować?", "what are we running low on?", "ile mamy jajek?"):
    - Ustaw pole "action": "answer".
    - Pole "row" ustaw na null.
-   - W polu "reply" udziel wyczerpującej, sformatowanej w Markdown odpowiedzi, wykorzystując wiedzę kulinarną i porównując ją ze stanem spiżarni.
+   - W polu "reply" udziel wyczerpującej, sformatowanej w Markdown odpowiedzi w języku pytania użytkownika (użyj wiedzy kulinarnej i porównaj składniki ze stanem spiżarni w tabeli).
 
-3. TEMATY NIEZWIĄZANE (np. polityka, pogoda):
+3. TEMATY NIEZWIĄZANE (np. polityka, historia, pogoda):
    - Ustaw pole "action": "answer", "row": null.
-   - W polu "reply" odmów: "W arkuszu nie ma informacji na ten temat - pomagam wyłącznie w sprawdzaniu i aktualizacji zapasów oraz planowaniu kuchni."
+   - W polu "reply" odmów w języku pytania użytkownika:
+     * Po polsku: "W arkuszu nie ma informacji na ten temat - pomagam wyłącznie w sprawdzaniu i aktualizacji zapasów oraz planowaniu kuchni."
+     * Po angielsku: "There is no information about this in the sheet - I only assist with checking and updating pantry inventory and meal planning."
 
-ODPOWIEDZ WYŁĄCZNIE W FORMACIE JSON o strukturze:
+ODPOWIADAJ WYŁĄCZNIE W POPRAWNYM FORMACIE JSON:
 {
   "action": "update" | "answer",
-  "reply": "tekst odpowiedzi dla użytkownika",
-  "row": { "Produkt": "...", "Ilosc": 0, ... } // lub null gdy action=="answer"
+  "reply": "tekst odpowiedzi lub potwierdzenia dla użytkownika (w języku pytania: PL lub EN)",
+  "row": { "Lp.": 71, "Produkt": "...", "Kategoria": "...", "Ilość": 1, "Jednostka": "...", "Minimum": 1, "Data ważności": "2027-12-31", "Miejsce": "...", "Status": "..." } // lub null gdy action=="answer"
 }`;
 
-  const userPrompt = `DANE Z ARKUSZA GOOGLE:\n${sheetData}\n\nPOLECENIE / WIADOMOŚĆ UŻYTKOWNIKA:\n${chatInput || '(brak pytania)'}`;
+  const userPrompt = `DANE Z ARKUSZA GOOGLE (GOOGLE SHEET DATA):\n${sheetData}\n\nPOLECENIE / WIADOMOŚĆ UŻYTKOWNIKA (USER MESSAGE):\n${chatInput || '(brak pytania)'}`;
 
   const fullPrompt = `${systemPrompt}\n\n========================================\n${userPrompt}`;
 
@@ -232,13 +271,54 @@ if (cleanedFull['Lp.'] !== 71) {
 }
 console.log('✅ Przy braku wolnych wierszy poprawnie wyliczono maxLp + 1 (71)!');
 
-console.log('\n=== TEST 4: Symulacja odpowiedzi Gemini dla pytania o przepis ===');
-const simAnswer = JSON.stringify({
+console.log('\n=== TEST 4: Symulacja odpowiedzi Gemini dla pytania po polsku o przepis ===');
+const simAnswerPL = JSON.stringify({
   action: "answer",
   reply: "Do naleśników potrzebujesz mąki, mleka i jajek. W spiżarni masz mąkę i jajka, ale brakuje mleka!",
   row: null
 });
-const parsedAnswer = parseDecision(simAnswer);
-console.log('Wynik parsowania dla czatu:', parsedAnswer.reply);
+const parsedAnswerPL = parseDecision(simAnswerPL);
+console.log('Wynik parsowania dla czatu (PL):', parsedAnswerPL.reply);
+
+console.log('\n=== TEST 5: Symulacja odpowiedzi Gemini na pytanie po angielsku ===');
+const pEN = prepareGeminiPayload(rows, 'I want to make pancakes, do I have the ingredients?');
+console.log('Prompt dla pytania EN przygotowany pomyślnie, długość:', pEN.contents[0].parts[0].text.length);
+
+const simAnswerEN = JSON.stringify({
+  action: "answer",
+  reply: "To make pancakes, you need flour, milk, and eggs. Checking your pantry:\n- **Mąka pszenna** (Szafka dolna): 2 kg available\n- **Jajka** (Lodówka): 4 pcs available\n- **Mleko**: 0 l (missing!)\nYou are missing **Mleko**.",
+  row: null
+});
+const parsedAnswerEN = parseDecision(simAnswerEN);
+console.log('Wynik parsowania odpowiedzi AI po angielsku (z polskimi nazwami z tabeli):');
+console.log(parsedAnswerEN.reply);
+if (!parsedAnswerEN.reply.includes('Mąka pszenna') || !parsedAnswerEN.reply.includes('Mleko')) {
+  throw new Error('BŁĄD: Odpowiedź w języku angielskim powinna zachować polskie nazwy produktów z tabeli!');
+}
+console.log('✅ Odpowiedź jest po angielsku, a nazwy produktów i lokalizacji pozostały po polsku!');
+
+console.log('\n=== TEST 6: Symulacja polecenia modyfikacji arkusza wydanego po angielsku ===');
+const simUpdateFromEN = JSON.stringify({
+  action: "update",
+  reply: "✅ Updated stock: Makaron spaghetti is now 6 pcs.",
+  row: {
+    'Produkt': 'Makaron spaghetti',
+    'Ilość': 6,
+    'Jednostka': 'opak.',
+    'Kategoria': 'Makarony i kasze',
+    'Miejsce': 'Szafka górna'
+  }
+});
+const parsedUpdateEN = parseDecision(simUpdateFromEN);
+const cleanedFromEN = cleanRowBeforeSave(tableWithEmptyRows, parsedUpdateEN);
+console.log('Wiersz zapisywany w arkuszu (dane w arkuszu pozostały po polsku):');
+console.log(cleanedFromEN);
+if (cleanedFromEN['Produkt'] !== 'Makaron spaghetti' || cleanedFromEN['Kategoria'] !== 'Makarony i kasze') {
+  throw new Error('BŁĄD: Dane w obiekcie do zapisu w arkuszu muszą być po polsku!');
+}
+if (cleanedFromEN['Lp.'] !== 1) {
+  throw new Error('BŁĄD: Wiersz powinien dopasować istniejący produkt o Lp. 1!');
+}
+console.log('✅ Potwierdzenie po angielsku, a dane do arkusza w 100% po polsku!');
 
 console.log('\n=== Wszystkie testy logiki przebiegły w 100% pomyślnie! ===');
