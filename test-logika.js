@@ -111,89 +111,99 @@ function parseDecision(aiResponseJson) {
     const raw = typeof aiResponseJson === 'string' ? aiResponseJson : JSON.stringify(aiResponseJson);
     parsed = JSON.parse(raw);
   } catch(e) {
-    return { action: 'answer', reply: 'Błąd parsowania.' };
+    return [{ action: 'answer', reply: 'Błąd parsowania.' }];
   }
 
-  if (parsed.action === 'update' && parsed.row) {
-    return {
-      ...parsed.row,
-      action: 'update',
-      reply: parsed.reply || '✅ Zaktualizowano arkusz.'
-    };
+  if (parsed.action === 'update') {
+    const rowList = Array.isArray(parsed.rows) ? parsed.rows : (parsed.row && typeof parsed.row === 'object' ? [parsed.row] : []);
+    if (rowList.length > 0) {
+      return rowList.map(r => ({
+        ...r,
+        action: 'update',
+        reply: parsed.reply || '✅ Zaktualizowano arkusz.'
+      }));
+    }
   }
 
-  return {
+  return [{
     action: 'answer',
     reply: parsed.reply || 'Brak odpowiedzi.'
-  };
+  }];
 }
 
 // --- 4. Logika z węzła "Oczyść wiersz przed zapisem" ---
-function cleanRowBeforeSave(sheetRows, input) {
+function cleanRowBeforeSave(sheetRows, inputs) {
   const validColumns = sheetRows.length > 0 ? Object.keys(sheetRows[0]).filter(k => k && !k.startsWith('_')) : [];
-  const cleanRow = {};
-
   const prodKey = validColumns.find(k => k.toLowerCase().includes('produkt') || k.toLowerCase().includes('product')) || 'Produkt';
   const lpKey = validColumns.find(k => k.toLowerCase().includes('lp')) || 'Lp.';
   const qtyKey = validColumns.find(k => k.toLowerCase().includes('ilość') || k.toLowerCase().includes('ilosc')) || 'Ilość';
   const minKey = validColumns.find(k => k.toLowerCase().includes('minimum') || k.toLowerCase().includes('min')) || 'Minimum';
   const statusKey = validColumns.find(k => k.toLowerCase().includes('status')) || 'Status';
 
-  const productName = input[prodKey] || input.Produkt || '';
-  const existingRow = sheetRows.find(r => r[prodKey] && String(r[prodKey]).trim().toLowerCase() === String(productName).trim().toLowerCase());
+  const occupiedRows = sheetRows.map(r => ({ ...r }));
+  const inputArray = Array.isArray(inputs) ? inputs : [inputs];
+  const results = [];
 
-  if (validColumns.length > 0) {
-    for (const col of validColumns) {
-      if (input[col] !== undefined) {
-        cleanRow[col] = input[col];
-      } else if (existingRow && existingRow[col] !== undefined) {
-        cleanRow[col] = existingRow[col];
-      }
-    }
-  } else {
-    for (const [key, value] of Object.entries(input)) {
-      if (key !== 'action' && key !== 'reply' && !key.startsWith('_')) {
-        cleanRow[key] = value;
-      }
-    }
-  }
+  for (const input of inputArray) {
+    const cleanRow = {};
+    const productName = input[prodKey] || input.Produkt || '';
+    const existingRow = occupiedRows.find(r => r && r[prodKey] && String(r[prodKey]).trim().toLowerCase() === String(productName).trim().toLowerCase());
 
-  // 4. Obsługa Lp. i szukanie pierwszego pustego wiersza w tabeli
-  if (existingRow && existingRow[lpKey]) {
-    cleanRow[lpKey] = existingRow[lpKey];
-  } else {
-    // Nowy produkt: znajdź pierwszy wiersz w tabeli, który ma puste pole Produkt
-    const emptyRow = sheetRows.find(r => !r[prodKey] || String(r[prodKey]).trim() === '');
-    if (emptyRow && emptyRow[lpKey] && String(emptyRow[lpKey]).trim() !== '') {
-      const parsedLp = parseInt(String(emptyRow[lpKey]), 10);
-      cleanRow[lpKey] = !isNaN(parsedLp) ? parsedLp : emptyRow[lpKey];
+    if (validColumns.length > 0) {
+      for (const col of validColumns) {
+        if (input[col] !== undefined) {
+          cleanRow[col] = input[col];
+        } else if (existingRow && existingRow[col] !== undefined) {
+          cleanRow[col] = existingRow[col];
+        }
+      }
     } else {
-      const maxLp = sheetRows.reduce((max, r) => {
-        const val = parseInt(r[lpKey], 10);
-        return !isNaN(val) && val > max ? val : max;
-      }, 0);
-      cleanRow[lpKey] = maxLp + 1;
+      for (const [key, value] of Object.entries(input)) {
+        if (key !== 'action' && key !== 'reply' && !key.startsWith('_')) {
+          cleanRow[key] = value;
+        }
+      }
     }
-  }
 
-  if (cleanRow[qtyKey] !== undefined) {
-    const num = parseFloat(String(cleanRow[qtyKey]).replace(',', '.'));
-    if (!isNaN(num)) cleanRow[qtyKey] = num;
-  }
-  if (cleanRow[minKey] !== undefined) {
-    const num = parseFloat(String(cleanRow[minKey]).replace(',', '.'));
-    if (!isNaN(num)) cleanRow[minKey] = num;
-  }
-
-  if (statusKey && cleanRow[qtyKey] !== undefined && cleanRow[minKey] !== undefined) {
-    const qty = Number(cleanRow[qtyKey]);
-    const min = Number(cleanRow[minKey]);
-    if (!isNaN(qty) && !isNaN(min)) {
-      cleanRow[statusKey] = (qty <= min) ? '⚠ Uzupełnij' : '✔ OK';
+    if (existingRow && existingRow[lpKey]) {
+      cleanRow[lpKey] = existingRow[lpKey];
+    } else {
+      const emptyRow = occupiedRows.find(r => r && (!r[prodKey] || String(r[prodKey]).trim() === ''));
+      if (emptyRow && emptyRow[lpKey] !== undefined && String(emptyRow[lpKey]).trim() !== '') {
+        const parsedLp = parseInt(String(emptyRow[lpKey]), 10);
+        cleanRow[lpKey] = !isNaN(parsedLp) ? parsedLp : emptyRow[lpKey];
+        emptyRow[prodKey] = productName;
+      } else {
+        const maxLp = occupiedRows.reduce((max, r) => {
+          const val = parseInt(r && r[lpKey], 10);
+          return !isNaN(val) && val > max ? val : max;
+        }, 0);
+        cleanRow[lpKey] = maxLp + 1;
+        occupiedRows.push({ [lpKey]: cleanRow[lpKey], [prodKey]: productName });
+      }
     }
+
+    if (cleanRow[qtyKey] !== undefined) {
+      const num = parseFloat(String(cleanRow[qtyKey]).replace(',', '.'));
+      if (!isNaN(num)) cleanRow[qtyKey] = num;
+    }
+    if (cleanRow[minKey] !== undefined) {
+      const num = parseFloat(String(cleanRow[minKey]).replace(',', '.'));
+      if (!isNaN(num)) cleanRow[minKey] = num;
+    }
+
+    if (statusKey && cleanRow[qtyKey] !== undefined && cleanRow[minKey] !== undefined) {
+      const qty = Number(cleanRow[qtyKey]);
+      const min = Number(cleanRow[minKey]);
+      if (!isNaN(qty) && !isNaN(min)) {
+        cleanRow[statusKey] = (qty <= min) ? '⚠ Uzupełnij' : '✔ OK';
+      }
+    }
+
+    results.push(cleanRow);
   }
 
-  return cleanRow;
+  return Array.isArray(inputs) ? results : results[0];
 }
 
 // --- 5. Testy symulacyjne ---
@@ -228,7 +238,7 @@ const tableWithEmptyRows = [
   { 'Lp.': 72, 'Produkt': '', 'Kategoria': '', 'Ilość': '', 'Jednostka': '', 'Minimum': '', 'Data ważności': '', 'Miejsce': '', 'Status': '' }
 ];
 
-const cleanedNewItem = cleanRowBeforeSave(tableWithEmptyRows, parsedUpdate);
+const [cleanedNewItem] = cleanRowBeforeSave(tableWithEmptyRows, parsedUpdate);
 console.log('Oczyszczony wiersz do zapisu w arkuszu (nowy produkt trafił do pustego wiersza):');
 console.log(cleanedNewItem);
 if (cleanedNewItem['Lp.'] !== 71) {
@@ -265,7 +275,7 @@ const tableFull = [
   { 'Lp.': 1, 'Produkt': 'Makaron spaghetti', 'Kategoria': 'Makarony i kasze', 'Ilość': 4, 'Jednostka': 'opak.', 'Minimum': 2, 'Data ważności': '2027-06-01', 'Miejsce': 'Szafka górna', 'Status': '✔ OK' },
   { 'Lp.': 70, 'Produkt': 'Czosnek', 'Kategoria': 'Inne', 'Ilość': 3, 'Jednostka': 'szt.', 'Minimum': 1, 'Data ważności': '2026-11-01', 'Miejsce': 'Spiżarnia', 'Status': '✔ OK' }
 ];
-const cleanedFull = cleanRowBeforeSave(tableFull, parsedUpdate);
+const [cleanedFull] = cleanRowBeforeSave(tableFull, parsedUpdate);
 if (cleanedFull['Lp.'] !== 71) {
   throw new Error(`BŁĄD: Przy braku wolnych wierszy powinien otrzymać max + 1 (71), a otrzymał: ${cleanedFull['Lp.']}`);
 }
@@ -277,7 +287,7 @@ const simAnswerPL = JSON.stringify({
   reply: "Do naleśników potrzebujesz mąki, mleka i jajek. W spiżarni masz mąkę i jajka, ale brakuje mleka!",
   row: null
 });
-const parsedAnswerPL = parseDecision(simAnswerPL);
+const [parsedAnswerPL] = parseDecision(simAnswerPL);
 console.log('Wynik parsowania dla czatu (PL):', parsedAnswerPL.reply);
 
 console.log('\n=== TEST 5: Symulacja odpowiedzi Gemini na pytanie po angielsku ===');
@@ -289,7 +299,7 @@ const simAnswerEN = JSON.stringify({
   reply: "To make pancakes, you need flour, milk, and eggs. Checking your pantry:\n- **Mąka pszenna** (Szafka dolna): 2 kg available\n- **Jajka** (Lodówka): 4 pcs available\n- **Mleko**: 0 l (missing!)\nYou are missing **Mleko**.",
   row: null
 });
-const parsedAnswerEN = parseDecision(simAnswerEN);
+const [parsedAnswerEN] = parseDecision(simAnswerEN);
 console.log('Wynik parsowania odpowiedzi AI po angielsku (z polskimi nazwami z tabeli):');
 console.log(parsedAnswerEN.reply);
 if (!parsedAnswerEN.reply.includes('Mąka pszenna') || !parsedAnswerEN.reply.includes('Mleko')) {
@@ -310,7 +320,7 @@ const simUpdateFromEN = JSON.stringify({
   }
 });
 const parsedUpdateEN = parseDecision(simUpdateFromEN);
-const cleanedFromEN = cleanRowBeforeSave(tableWithEmptyRows, parsedUpdateEN);
+const [cleanedFromEN] = cleanRowBeforeSave(tableWithEmptyRows, parsedUpdateEN);
 console.log('Wiersz zapisywany w arkuszu (dane w arkuszu pozostały po polsku):');
 console.log(cleanedFromEN);
 if (cleanedFromEN['Produkt'] !== 'Makaron spaghetti' || cleanedFromEN['Kategoria'] !== 'Makarony i kasze') {
@@ -320,5 +330,52 @@ if (cleanedFromEN['Lp.'] !== 1) {
   throw new Error('BŁĄD: Wiersz powinien dopasować istniejący produkt o Lp. 1!');
 }
 console.log('✅ Potwierdzenie po angielsku, a dane do arkusza w 100% po polsku!');
+
+console.log('\n=== TEST 7: Symulacja aktualizacji istniejącego produktu ORAZ dodania nowego z auto-domyślnymi parametrami (bez dopytywania) ===');
+const simMultiUpdate = JSON.stringify({
+  action: "update",
+  reply: "✅ Stock updated: Makaron spaghetti is now 7 szt. and added Chleb pełnoziarnisty (1 szt.) to Szafka dolna.",
+  rows: [
+    {
+      Produkt: "Makaron spaghetti",
+      'Ilość': 7,
+      Jednostka: "opak.",
+      Kategoria: "Makarony i kasze",
+      Miejsce: "Szafka górna"
+    },
+    {
+      Produkt: "Chleb pełnoziarnisty",
+      'Ilość': 1,
+      Jednostka: "szt.",
+      Kategoria: "Pieczywo",
+      Miejsce: "Szafka dolna",
+      Minimum: 1,
+      "Data ważności": "2026-09-22"
+    }
+  ]
+});
+
+const parsedMulti = parseDecision(simMultiUpdate);
+if (parsedMulti.length !== 2) {
+  throw new Error(`BŁĄD: Oczekiwano 2 wierszy po parsowaniu, otrzymano: ${parsedMulti.length}`);
+}
+
+const cleanedMulti = cleanRowBeforeSave(tableWithEmptyRows, parsedMulti);
+console.log('Wynik oczyszczenia wielu wierszy z jednego polecenia:');
+console.log(cleanedMulti);
+
+const pastaRow = cleanedMulti.find(r => r.Produkt === 'Makaron spaghetti');
+const breadRow = cleanedMulti.find(r => r.Produkt === 'Chleb pełnoziarnisty');
+
+if (!pastaRow || pastaRow['Lp.'] !== 1 || pastaRow['Ilość'] !== 7) {
+  throw new Error('BŁĄD: Makaron spaghetti powinien zachować Lp. 1 i mieć ilość 7!');
+}
+if (!breadRow || breadRow['Lp.'] !== 71) {
+  throw new Error(`BŁĄD: Nowy produkt Chleb pełnoziarnisty powinien otrzymać wolny wiersz Lp. 71, otrzymano: ${breadRow && breadRow['Lp.']}`);
+}
+if (breadRow.Jednostka !== 'szt.' || breadRow.Miejsce !== 'Szafka dolna' || breadRow.Status !== '⚠ Uzupełnij') {
+  throw new Error('BŁĄD: Błędne parametry domyślne dla chleba!');
+}
+console.log('✅ Wiele produktów zaktualizowanych/dodanych naraz z auto-domyślnymi wartościami (bez zadawania pytań)!');
 
 console.log('\n=== Wszystkie testy logiki przebiegły w 100% pomyślnie! ===');
